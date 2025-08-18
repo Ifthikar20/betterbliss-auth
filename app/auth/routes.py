@@ -9,28 +9,37 @@ from app.auth.cognito import cognito_client
 from app.auth.dependencies import get_current_user, get_optional_user
 from app.utils.cookies import set_auth_cookies, clear_auth_cookies
 from app.config import settings
+import traceback
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=LoginResponse)
 async def register(request: RegisterRequest, response: Response):
     """Register a new user"""
+    print(f"🔍 DEBUG: Registration request received for email: {request.email}")
+    print(f"🔍 DEBUG: Full name: {request.full_name}")
+    
     try:
         # Register with Cognito
+        print(f"🔍 DEBUG: Calling cognito_client.register_user...")
         cognito_response = cognito_client.register_user(
             email=request.email,
             password=request.password,
             full_name=request.full_name
         )
+        print(f"✅ DEBUG: Registration successful: {cognito_response}")
         
         # Auto-login after registration
+        print(f"🔍 DEBUG: Attempting auto-login...")
         auth_response = cognito_client.authenticate_user(
             email=request.email,
             password=request.password
         )
+        print(f"✅ DEBUG: Auto-login successful")
         
         # Get user info
         user_info = cognito_client.get_user_info(auth_response['access_token'])
+        print(f"✅ DEBUG: Got user info: {user_info.email}")
         
         # Set cookies
         set_auth_cookies(
@@ -46,23 +55,37 @@ async def register(request: RegisterRequest, response: Response):
         )
         
     except ValueError as e:
+        print(f"❌ DEBUG: ValueError in registration: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
+        )
+    except Exception as e:
+        print(f"❌ DEBUG: Unexpected error in registration: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Registration failed: {str(e)}"
         )
 
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest, response: Response):
     """Login with email and password"""
+    print(f"🔍 DEBUG: Login request received for email: {request.email}")
+    
     try:
         # Authenticate with Cognito
+        print(f"🔍 DEBUG: Calling cognito_client.authenticate_user...")
         auth_response = cognito_client.authenticate_user(
             email=request.email,
             password=request.password
         )
+        print(f"✅ DEBUG: Authentication successful")
         
         # Get user info
         user_info = cognito_client.get_user_info(auth_response['access_token'])
+        print(f"✅ DEBUG: Got user info: {user_info.email}")
         
         # Set cookies
         set_auth_cookies(
@@ -78,9 +101,18 @@ async def login(request: LoginRequest, response: Response):
         )
         
     except ValueError as e:
+        print(f"❌ DEBUG: ValueError in login: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e)
+        )
+    except Exception as e:
+        print(f"❌ DEBUG: Unexpected error in login: {str(e)}")
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed: {str(e)}"
         )
 
 @router.post("/logout")

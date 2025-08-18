@@ -2,6 +2,7 @@ import boto3
 import hmac
 import hashlib
 import base64
+import uuid
 from typing import Optional, Dict, Any
 from botocore.exceptions import ClientError
 from app.config import settings
@@ -26,20 +27,29 @@ class CognitoClient:
         ).decode()
         return secret_hash
     
+    def _generate_username(self, email: str) -> str:
+        """Generate a unique username from email"""
+        # Use UUID to ensure uniqueness
+        # You can also use: email.split('@')[0] + '_' + str(uuid.uuid4())[:8]
+        return str(uuid.uuid4())
+    
     def register_user(self, email: str, password: str, full_name: str) -> Dict[str, Any]:
         """Register a new user in Cognito"""
         try:
+            # Use email as username since UsernameAttributes is set to ["email"]
+            username = email  # Changed from UUID generation
+            
             response = self.client.sign_up(
                 ClientId=self.client_id,
-                SecretHash=self._get_secret_hash(email),
-                Username=email,
+                SecretHash=self._get_secret_hash(username),
+                Username=username,  # Use email as username
                 Password=password,
                 UserAttributes=[
                     {'Name': 'email', 'Value': email},
                     {'Name': 'name', 'Value': full_name},
                     {'Name': 'custom:role', 'Value': UserRole.FREE_USER},
                     {'Name': 'custom:subscription_tier', 'Value': SubscriptionTier.FREE},
-                    {'Name': 'custom:permissions', 'Value': json.dumps([])}
+                    {'Name': 'custom:permissions', 'Value': json.dumps([])},
                 ]
             )
             
@@ -47,13 +57,14 @@ class CognitoClient:
             if settings.environment == "development":
                 self.client.admin_confirm_sign_up(
                     UserPoolId=self.user_pool_id,
-                    Username=email
+                    Username=username  # Use email
                 )
             
             return {
                 "success": True,
                 "user_sub": response['UserSub'],
-                "email": email
+                "email": email,
+                "username": username
             }
             
         except ClientError as e:
@@ -66,13 +77,14 @@ class CognitoClient:
                 raise ValueError(f"Registration failed: {e.response['Error']['Message']}")
     
     def authenticate_user(self, email: str, password: str) -> Dict[str, Any]:
-        """Authenticate user with Cognito"""
+        """Authenticate user with Cognito using email as username"""
         try:
+            # Use email as username since that's how we register users
             response = self.client.initiate_auth(
                 ClientId=self.client_id,
                 AuthFlow='USER_PASSWORD_AUTH',
                 AuthParameters={
-                    'USERNAME': email,
+                    'USERNAME': email,  # Email is the username
                     'PASSWORD': password,
                     'SECRET_HASH': self._get_secret_hash(email)
                 }
@@ -95,17 +107,21 @@ class CognitoClient:
                 raise ValueError("Invalid email or password")
             elif error_code == 'UserNotConfirmedException':
                 raise ValueError("Please confirm your email before signing in")
+            elif error_code == 'UserNotFoundException':
+                raise ValueError("No account found with this email")
             else:
                 raise ValueError(f"Authentication failed: {e.response['Error']['Message']}")
     
     def refresh_tokens(self, refresh_token: str) -> Dict[str, Any]:
         """Refresh access token using refresh token"""
         try:
+            # For refresh token, we don't need SECRET_HASH
             response = self.client.initiate_auth(
                 ClientId=self.client_id,
                 AuthFlow='REFRESH_TOKEN_AUTH',
                 AuthParameters={
-                    'REFRESH_TOKEN': refresh_token
+                    'REFRESH_TOKEN': refresh_token,
+                    'SECRET_HASH': self._get_secret_hash(self.client_id)  # Use client_id for refresh
                 }
             )
             

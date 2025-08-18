@@ -1,5 +1,5 @@
 from fastapi import Response
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.config import settings
 
 def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
@@ -10,7 +10,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
         key="access_token",
         value=access_token,
         max_age=settings.access_token_expire_minutes * 60,
-        expires=datetime.utcnow() + timedelta(minutes=settings.access_token_expire_minutes),
+        expires=datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes),
         domain=settings.cookie_domain,
         secure=settings.cookie_secure,
         httponly=settings.cookie_httponly,
@@ -22,7 +22,7 @@ def set_auth_cookies(response: Response, access_token: str, refresh_token: str):
         key="refresh_token",
         value=refresh_token,
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
-        expires=datetime.utcnow() + timedelta(days=settings.refresh_token_expire_days),
+        expires=datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days),
         domain=settings.cookie_domain,
         secure=settings.cookie_secure,
         httponly=settings.cookie_httponly,

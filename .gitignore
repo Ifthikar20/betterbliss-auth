@@ -13,5 +13,7 @@ node_modules/
 .env
 
 *env
-
+.env.docker
+.env*
+.dockerignore
 *venv/

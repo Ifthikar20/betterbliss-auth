@@ -1,0 +1,48 @@
+{
+  "family": "betterbliss-auth-task",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::817977750104:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "name": "betterbliss-auth",
+      "image": "817977750104.dkr.ecr.us-east-1.amazonaws.com/betterbliss-auth:latest",
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/betterbliss-auth",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "environment": [
+        {"name": "AWS_REGION", "value": "us-east-1"},
+        {"name": "ENVIRONMENT", "value": "production"},
+        {"name": "COGNITO_USER_POOL_ID", "value": "${COGNITO_USER_POOL_ID}"},
+        {"name": "COGNITO_CLIENT_ID", "value": "${COGNITO_CLIENT_ID}"},
+        {"name": "COGNITO_CLIENT_SECRET", "value": "${COGNITO_CLIENT_SECRET}"},
+        {"name": "COGNITO_DOMAIN", "value": "${COGNITO_DOMAIN}"},
+        {"name": "COOKIE_DOMAIN", "value": "${COOKIE_DOMAIN}"},
+        {"name": "FRONTEND_URL", "value": "http://betterbliss-alb-1566345575.us-east-1.elb.amazonaws.com"},
+        {"name": "BACKEND_URL", "value": "http://betterbliss-alb-1566345575.us-east-1.elb.amazonaws.com"},
+        {"name": "JWT_SECRET_KEY", "value": "production-secret-key-change-this"}
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 60
+      }
+    }
+  ]
+}

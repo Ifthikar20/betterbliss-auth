@@ -1,4 +1,4 @@
-# app/auth/enhanced_routes.py (Updated routes with database integration)
+# app/auth/enhanced_routes.py
 from fastapi import APIRouter, Response, HTTPException, Cookie, Depends, status
 from fastapi.responses import RedirectResponse
 from typing import Optional, Dict, Any
@@ -9,6 +9,7 @@ from app.auth.models import (
 from app.auth.user_service import user_service
 from app.auth.enhanced_dependencies import get_current_user_with_db, get_current_user_simple
 from app.utils.cookies import set_auth_cookies, clear_auth_cookies
+from app.auth.cognito import cognito_client
 from app.config import settings
 import traceback
 import logging
@@ -172,3 +173,82 @@ async def logout(
     clear_auth_cookies(response)
     
     return {"success": True, "message": "Logged out successfully"}
+
+@router.post("/refresh")
+async def refresh_token(
+    response: Response,
+    refresh_token: Optional[str] = Cookie(None)
+):
+    """Refresh access token"""
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token not found"
+        )
+    
+    try:
+        # Refresh tokens with Cognito
+        new_tokens = cognito_client.refresh_tokens(refresh_token)
+        
+        # Update access token cookie
+        response.set_cookie(
+            key="access_token",
+            value=new_tokens['access_token'],
+            max_age=settings.access_token_expire_minutes * 60,
+            domain=settings.cookie_domain,
+            secure=settings.cookie_secure,
+            httponly=settings.cookie_httponly,
+            samesite=settings.cookie_samesite
+        )
+        
+        return {"success": True, "message": "Token refreshed"}
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Failed to refresh token"
+        )
+
+@router.get("/google")
+async def google_login():
+    """Initiate Google OAuth login"""
+    google_url = cognito_client.initiate_google_auth()
+    return RedirectResponse(url=google_url)
+
+@router.get("/callback")
+async def auth_callback(
+    code: str,
+    response: Response
+):
+    """Handle OAuth callback from Cognito"""
+    try:
+        # Exchange code for tokens
+        tokens = cognito_client.exchange_code_for_tokens(code)
+        
+        # Get user info from Cognito and sync with database
+        access_token = tokens['access_token']
+        user_info = cognito_client.get_user_info(access_token)
+        
+        # Sync user with database (create if doesn't exist)
+        auth_result = await user_service.sync_cognito_user_with_db(user_info)
+        
+        # Set cookies
+        set_auth_cookies(
+            response=response,
+            access_token=access_token,
+            refresh_token=tokens['refresh_token']
+        )
+        
+        # Redirect to frontend
+        return RedirectResponse(
+            url=f"{settings.frontend_url}/browse",
+            status_code=status.HTTP_302_FOUND
+        )
+        
+    except Exception as e:
+        logger.error(f"OAuth callback failed: {e}")
+        # Redirect to login with error
+        return RedirectResponse(
+            url=f"{settings.frontend_url}/login?error=oauth_failed",
+            status_code=status.HTTP_302_FOUND
+        )

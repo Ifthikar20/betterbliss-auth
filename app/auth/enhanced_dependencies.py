@@ -2,7 +2,7 @@
 from fastapi import Depends, HTTPException, Cookie, status
 from typing import Optional, Dict, Any
 from app.auth.cognito import cognito_client
-from app.auth.models import UserResponse
+from app.auth.models import UserResponse, UserRole, SubscriptionTier
 from app.auth.user_service import user_service
 from app.database.connection import get_db_connection, release_db_connection
 from app.database.user_repository import UserRepository

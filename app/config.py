@@ -9,6 +9,15 @@ class Settings(BaseSettings):
     cognito_client_secret: str
     cognito_domain: str
     
+    # Database Settings
+    database_url: Optional[str] = None
+    db_host: Optional[str] = None
+    db_port: Optional[int] = None
+    db_name: Optional[str] = None
+    db_username: Optional[str] = None
+    db_password: Optional[str] = None
+    db_ssl_mode: str = "require"
+    
     # App Settings
     frontend_url: str
     backend_url: str
@@ -25,5 +34,6 @@ class Settings(BaseSettings):
     
     class Config:
         env_file = ".env"
+        extra = "ignore"  # This line allows extra env vars without errors
 
 settings = Settings()

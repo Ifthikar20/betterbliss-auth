@@ -21,16 +21,22 @@ async def lifespan(app: FastAPI):
         await DatabaseConnection.get_pool()
         logger.info("Database connection pool initialized")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
+        if settings.environment == "development":
+            logger.warning(f"Database connection failed (development mode): {e}")
+            logger.warning("Continuing without database connection for local testing")
+        else:
+            logger.error(f"Failed to initialize database: {e}")
+            raise
     
     yield
     
     # Shutdown
     logger.info("Shutting down Better & Bliss API...")
-    await DatabaseConnection.close_pool()
-    logger.info("Database connections closed")
-
+    try:
+        await DatabaseConnection.close_pool()
+        logger.info("Database connections closed")
+    except Exception as e:
+        logger.warning(f"Error closing database connections: {e}")
 # Create FastAPI app with lifespan
 app = FastAPI(
     title="Better & Bliss API",
@@ -43,7 +49,7 @@ app = FastAPI(
 setup_cors(app)
 
 # Import and include the enhanced auth router
-from app.auth.enhanced_routes import router as auth_router
+from app.auth.routes import router as auth_router
 app.include_router(auth_router)
 
 @app.get("/")

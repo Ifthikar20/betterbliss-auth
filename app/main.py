@@ -1,8 +1,4 @@
-# app/main.py (Updated with database integration)
-from dotenv import load_dotenv
-# Load environment variables first, before any other imports
-load_dotenv()
-
+# app/main.py (Fixed - without content router that's causing import error)
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -53,9 +49,13 @@ app = FastAPI(
 # Setup CORS
 setup_cors(app)
 
-# Import and include the enhanced auth router
-from app.auth.enhanced_routes import router as auth_router
+# Import and include the auth router (keep existing)
+from app.auth.routes import router as auth_router
 app.include_router(auth_router)
+
+# TEMPORARILY COMMENTED OUT - This is causing the import error
+# from app.content.routes import router as content_router
+# app.include_router(content_router)
 
 @app.get("/")
 async def root():
@@ -84,6 +84,46 @@ async def health_check():
             "database": "healthy" if db_healthy else "unhealthy"
         }
     }
+
+# Temporary content endpoints directly in main.py to avoid import issues
+from typing import Optional
+from app.auth.dependencies import get_optional_user
+from app.auth.models import UserResponse
+from fastapi import Depends, Query
+
+@app.get("/content/check-data")
+async def check_database_data():
+    """Temporary endpoint to check database data"""
+    try:
+        from app.database.connection import get_db_connection, release_db_connection
+        
+        connection = await get_db_connection()
+        
+        # Check experts
+        experts = await connection.fetch("SELECT name, title, verified FROM experts")
+        
+        # Check content  
+        content = await connection.fetch("SELECT title, access_tier, content_type FROM content")
+        
+        # Check categories
+        categories = await connection.fetch("SELECT name, slug FROM categories")
+        
+        await release_db_connection(connection)
+        
+        return {
+            "experts": [{"name": e["name"], "title": e["title"], "verified": e["verified"]} for e in experts],
+            "content": [{"title": c["title"], "tier": c["access_tier"], "type": c["content_type"]} for c in content],
+            "categories": [{"name": cat["name"], "slug": cat["slug"]} for cat in categories],
+            "totals": {
+                "experts": len(experts),
+                "content": len(content), 
+                "categories": len(categories)
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Database check failed: {e}")
+        return {"error": str(e), "database_accessible": False}
 
 # Global exception handler
 @app.exception_handler(Exception)

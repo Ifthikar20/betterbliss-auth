@@ -2,8 +2,11 @@
 import asyncpg
 import os
 from typing import Optional
-from app.config import settings
+from dotenv import load_dotenv
 import logging
+
+# Ensure environment variables are loaded
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -15,8 +18,14 @@ class DatabaseConnection:
         """Get or create database connection pool"""
         if cls._pool is None:
             try:
+                db_url = os.getenv('DATABASE_URL')
+                print(f"DEBUG: DATABASE_URL = {db_url}")
+                
+                if not db_url:
+                    raise ValueError("DATABASE_URL environment variable not set")
+                
                 cls._pool = await asyncpg.create_pool(
-                    os.getenv('DATABASE_URL'),
+                    db_url,
                     min_size=1,
                     max_size=10,
                     command_timeout=60

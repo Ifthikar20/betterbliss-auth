@@ -1,4 +1,8 @@
 # app/main.py (Updated with database integration)
+from dotenv import load_dotenv
+# Load environment variables first, before any other imports
+load_dotenv()
+
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
@@ -37,6 +41,7 @@ async def lifespan(app: FastAPI):
         logger.info("Database connections closed")
     except Exception as e:
         logger.warning(f"Error closing database connections: {e}")
+
 # Create FastAPI app with lifespan
 app = FastAPI(
     title="Better & Bliss API",
@@ -49,7 +54,7 @@ app = FastAPI(
 setup_cors(app)
 
 # Import and include the enhanced auth router
-from app.auth.routes import router as auth_router
+from app.auth.enhanced_routes import router as auth_router
 app.include_router(auth_router)
 
 @app.get("/")

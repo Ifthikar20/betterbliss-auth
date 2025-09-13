@@ -1,10 +1,11 @@
-# app/main.py (Fixed - without content router that's causing import error)
+# app/main.py (Updated with content router)
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 from app.config import settings
 from app.middleware.cors import setup_cors
 from app.database.connection import DatabaseConnection
+from app.routes.streaming import router as streaming_router
 import logging
 
 # Configure logging
@@ -49,13 +50,15 @@ app = FastAPI(
 # Setup CORS
 setup_cors(app)
 
-# Import and include the auth router (keep existing)
+# Import and include routers
 from app.auth.routes import router as auth_router
 app.include_router(auth_router)
 
-# TEMPORARILY COMMENTED OUT - This is causing the import error
-# from app.content.routes import router as content_router
-# app.include_router(content_router)
+# Include content router (now working!)
+from app.content.routes import router as content_router
+app.include_router(content_router)
+
+app.include_router(streaming_router)
 
 @app.get("/")
 async def root():
@@ -84,12 +87,6 @@ async def health_check():
             "database": "healthy" if db_healthy else "unhealthy"
         }
     }
-
-# Temporary content endpoints directly in main.py to avoid import issues
-from typing import Optional
-from app.auth.dependencies import get_optional_user
-from app.auth.models import UserResponse
-from fastapi import Depends, Query
 
 @app.get("/content/check-data")
 async def check_database_data():

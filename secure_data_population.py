@@ -1,4 +1,4 @@
-# secure_data_population.py - Security-first database population
+# secure_data_population.py - Security-first database population with video streaming support
 import asyncio
 import asyncpg
 import os
@@ -57,6 +57,29 @@ class SecureDataPopulator:
             
         except Exception as e:
             logger.error(f"Failed to check existing data: {e}")
+            raise
+    
+    async def add_video_columns(self):
+        """Add video streaming columns to content table if they don't exist"""
+        try:
+            # Add video streaming columns
+            video_columns = [
+                "ALTER TABLE content ADD COLUMN IF NOT EXISTS s3_key_video_720p TEXT",
+                "ALTER TABLE content ADD COLUMN IF NOT EXISTS s3_key_video_1080p TEXT",
+                "ALTER TABLE content ADD COLUMN IF NOT EXISTS s3_key_thumbnail TEXT",
+                "ALTER TABLE content ADD COLUMN IF NOT EXISTS s3_key_poster TEXT",
+                "ALTER TABLE content ADD COLUMN IF NOT EXISTS video_duration_seconds INTEGER",
+                "ALTER TABLE content ADD COLUMN IF NOT EXISTS video_format VARCHAR(10) DEFAULT 'mp4'",
+                "ALTER TABLE content ADD COLUMN IF NOT EXISTS has_video BOOLEAN DEFAULT false"
+            ]
+            
+            for column_sql in video_columns:
+                await self.connection.execute(column_sql)
+            
+            logger.info("Video streaming columns added to content table")
+            
+        except Exception as e:
+            logger.error(f"Failed to add video columns: {e}")
             raise
     
     async def populate_experts(self):
@@ -118,7 +141,7 @@ class SecureDataPopulator:
             raise
     
     async def populate_content(self):
-        """Populate content table with security-validated data"""
+        """Populate content table with security-validated data and video streaming support"""
         try:
             # Get expert and category IDs for foreign key relationships
             experts = await self.connection.fetch("SELECT id, slug FROM experts")
@@ -131,7 +154,7 @@ class SecureDataPopulator:
             expert_lookup = {expert['slug']: expert['id'] for expert in experts}
             category_lookup = {cat['slug']: cat['id'] for cat in categories}
             
-            # Minimal content data - no external URLs or user-generated content
+            # Enhanced content data with video streaming support
             content_data = [
                 {
                     'title': 'Understanding Anxiety: A Clinical Perspective',
@@ -142,7 +165,14 @@ class SecureDataPopulator:
                     'category_slug': 'mental-health',
                     'duration_seconds': 1200,
                     'access_tier': 'free',
-                    'featured': True
+                    'featured': True,
+                    # Video streaming data
+                    's3_key_video_720p': 'videos/720p/understanding-anxiety-clinical-720p.mp4',
+                    's3_key_video_1080p': 'videos/1080p/understanding-anxiety-clinical-1080p.mp4',
+                    's3_key_thumbnail': 'thumbnails/understanding-anxiety-clinical-thumb.jpg',
+                    's3_key_poster': 'posters/understanding-anxiety-clinical-poster.jpg',
+                    'video_duration_seconds': 1200,
+                    'has_video': True
                 },
                 {
                     'title': 'Basic Mindfulness Meditation',
@@ -153,7 +183,12 @@ class SecureDataPopulator:
                     'category_slug': 'mindfulness',
                     'duration_seconds': 900,
                     'access_tier': 'free',
-                    'featured': False
+                    'featured': False,
+                    # Video streaming data
+                    's3_key_video_720p': 'videos/720p/basic-mindfulness-meditation-720p.mp4',
+                    's3_key_thumbnail': 'thumbnails/basic-mindfulness-meditation-thumb.jpg',
+                    'video_duration_seconds': 900,
+                    'has_video': True
                 },
                 {
                     'title': 'Healthy Communication Patterns',
@@ -164,18 +199,47 @@ class SecureDataPopulator:
                     'category_slug': 'relationships',
                     'duration_seconds': 1500,
                     'access_tier': 'premium',
-                    'featured': True
+                    'featured': True,
+                    # Video streaming data
+                    's3_key_video_720p': 'videos/720p/healthy-communication-patterns-720p.mp4',
+                    's3_key_video_1080p': 'videos/1080p/healthy-communication-patterns-1080p.mp4',
+                    's3_key_thumbnail': 'thumbnails/healthy-communication-patterns-thumb.jpg',
+                    's3_key_poster': 'posters/healthy-communication-patterns-poster.jpg',
+                    'video_duration_seconds': 1500,
+                    'has_video': True
                 },
                 {
                     'title': 'Cognitive Behavioral Techniques',
                     'slug': 'cognitive-behavioral-techniques',
                     'description': 'Practical CBT exercises for managing negative thought patterns.',
-                    'content_type': 'article',
+                    'content_type': 'video',
                     'expert_slug': 'dr-sarah-thompson',
                     'category_slug': 'mental-health',
                     'duration_seconds': 600,
                     'access_tier': 'premium',
-                    'featured': False
+                    'featured': False,
+                    # Video streaming data
+                    's3_key_video_720p': 'videos/720p/cognitive-behavioral-techniques-720p.mp4',
+                    's3_key_thumbnail': 'thumbnails/cognitive-behavioral-techniques-thumb.jpg',
+                    'video_duration_seconds': 600,
+                    'has_video': True
+                },
+                {
+                    'title': 'Introduction to Stress Management',
+                    'slug': 'introduction-to-stress-management',
+                    'description': 'Learn fundamental techniques for managing daily stress and building resilience.',
+                    'content_type': 'video',
+                    'expert_slug': 'dr-sarah-thompson',
+                    'category_slug': 'mental-health',
+                    'duration_seconds': 1050,
+                    'access_tier': 'free',
+                    'featured': True,
+                    # Video streaming data
+                    's3_key_video_720p': 'videos/720p/stress-management-intro-720p.mp4',
+                    's3_key_video_1080p': 'videos/1080p/stress-management-intro-1080p.mp4',
+                    's3_key_thumbnail': 'thumbnails/stress-management-intro-thumb.jpg',
+                    'video_duration_seconds': 1050,
+                    'has_video': True
                 }
             ]
             
@@ -188,13 +252,15 @@ class SecureDataPopulator:
                     logger.warning(f"Skipping content '{content['title']}' - missing relationships")
                     continue
                 
-                # Use parameterized queries for security
+                # Use parameterized queries for security with video streaming support
                 await self.connection.execute('''
                     INSERT INTO content (
                         id, title, slug, description, content_type, expert_id, category_id,
-                        duration_seconds, access_tier, featured, status, view_count, like_count
+                        duration_seconds, access_tier, featured, status, view_count, like_count,
+                        s3_key_video_720p, s3_key_video_1080p, s3_key_thumbnail, s3_key_poster,
+                        video_duration_seconds, video_format, has_video
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
                     ON CONFLICT (slug) DO NOTHING
                 ''',
                 str(uuid.uuid4()),
@@ -209,13 +275,44 @@ class SecureDataPopulator:
                 content['featured'],
                 'published',
                 0,  # view_count
-                0   # like_count
+                0,  # like_count
+                content.get('s3_key_video_720p'),
+                content.get('s3_key_video_1080p'),
+                content.get('s3_key_thumbnail'),
+                content.get('s3_key_poster'),
+                content.get('video_duration_seconds'),
+                'mp4',  # video_format
+                content.get('has_video', False)
                 )
             
-            logger.info("Content data populated securely")
+            logger.info("Content data with video streaming support populated securely")
             
         except Exception as e:
             logger.error(f"Failed to populate content: {e}")
+            raise
+    
+    async def create_video_analytics_table(self):
+        """Create video analytics table for streaming metrics"""
+        try:
+            await self.connection.execute('''
+                CREATE TABLE IF NOT EXISTS video_analytics (
+                    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+                    content_id UUID REFERENCES content(id) ON DELETE CASCADE,
+                    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+                    session_id VARCHAR(100) NOT NULL,
+                    event_type VARCHAR(20) NOT NULL,
+                    timestamp_seconds DECIMAL(10,2),
+                    watch_duration_seconds INTEGER,
+                    quality_level VARCHAR(10),
+                    device_type VARCHAR(20),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            
+            logger.info("Video analytics table created")
+            
+        except Exception as e:
+            logger.error(f"Failed to create video analytics table: {e}")
             raise
     
     async def create_security_indexes(self):
@@ -228,13 +325,18 @@ class SecureDataPopulator:
                 "CREATE INDEX IF NOT EXISTS idx_experts_status ON experts(status)",
                 "CREATE INDEX IF NOT EXISTS idx_users_status ON users(status)",
                 "CREATE INDEX IF NOT EXISTS idx_content_expert_id ON content(expert_id)",
-                "CREATE INDEX IF NOT EXISTS idx_content_category_id ON content(category_id)"
+                "CREATE INDEX IF NOT EXISTS idx_content_category_id ON content(category_id)",
+                # Video streaming indexes
+                "CREATE INDEX IF NOT EXISTS idx_content_has_video ON content(has_video) WHERE has_video = true",
+                "CREATE INDEX IF NOT EXISTS idx_content_access_tier_video ON content(access_tier, has_video)",
+                "CREATE INDEX IF NOT EXISTS idx_video_analytics_content ON video_analytics(content_id, created_at)",
+                "CREATE INDEX IF NOT EXISTS idx_video_analytics_user ON video_analytics(user_id, created_at)"
             ]
             
             for index_sql in security_indexes:
                 await self.connection.execute(index_sql)
             
-            logger.info("Security indexes created")
+            logger.info("Security and video streaming indexes created")
             
         except Exception as e:
             logger.error(f"Failed to create security indexes: {e}")
@@ -262,6 +364,15 @@ class SecureDataPopulator:
             if invalid_tiers > 0:
                 raise ValueError(f"Data integrity violation: {invalid_tiers} invalid access tiers")
             
+            # Validate video content has required fields
+            invalid_video_content = await self.connection.fetchval('''
+                SELECT COUNT(*) FROM content
+                WHERE has_video = true AND (s3_key_video_720p IS NULL OR s3_key_thumbnail IS NULL)
+            ''')
+            
+            if invalid_video_content > 0:
+                logger.warning(f"Found {invalid_video_content} video content items missing required streaming keys")
+            
             logger.info("Data integrity validation passed")
             
         except Exception as e:
@@ -269,7 +380,7 @@ class SecureDataPopulator:
             raise
 
 async def populate_database():
-    """Main function to securely populate database"""
+    """Main function to securely populate database with video streaming support"""
     populator = SecureDataPopulator()
     
     try:
@@ -281,10 +392,17 @@ async def populate_database():
             return True
         
         # Populate data in dependency order
-        logger.info("Starting secure data population...")
+        logger.info("Starting secure data population with video streaming support...")
         
+        # Add video columns first
+        await populator.add_video_columns()
+        
+        # Populate core data
         await populator.populate_experts()
         await populator.populate_content()
+        
+        # Create supporting infrastructure
+        await populator.create_video_analytics_table()
         await populator.create_security_indexes()
         await populator.validate_data_integrity()
         
@@ -301,12 +419,19 @@ async def populate_database():
 if __name__ == "__main__":
     success = asyncio.run(populate_database())
     if success:
-        print("✅ Database populated securely!")
+        print("✅ Database populated securely with video streaming support!")
         print("📊 Summary:")
         print("   - 3 verified experts added")
-        print("   - 4 content items added (mix of free/premium)")
+        print("   - 5 video content items added (mix of free/premium)")
+        print("   - Video streaming columns and analytics table created")
+        print("   - Sample S3 keys added for testing")
         print("   - Security indexes created")
         print("   - Data integrity validated")
+        print("")
+        print("🎬 Video streaming ready!")
+        print("   - Content has S3 video keys for 720p/1080p")
+        print("   - Thumbnails and posters configured")
+        print("   - Analytics tracking enabled")
     else:
         print("❌ Database population failed!")
         exit(1)

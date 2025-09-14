@@ -5,6 +5,7 @@ from app.auth.dependencies import get_optional_user
 from app.auth.models import UserResponse
 from app.services.streaming_service import streaming_service
 from app.database.connection import get_db_connection, release_db_connection
+from app.auth.dependencies import get_current_user
 import logging
 
 logger = logging.getLogger(__name__)

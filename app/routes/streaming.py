@@ -1,12 +1,12 @@
-# app/routes/streaming.py
+# app/routes/streaming.py - FIXED to require authentication
 from fastapi import APIRouter, Depends, HTTPException, status, Body
 from typing import Optional, Dict, Any
-from app.auth.dependencies import get_optional_user
-from app.auth.models import UserResponse
 from app.services.streaming_service import streaming_service
 from app.database.connection import get_db_connection, release_db_connection
-from app.auth.dependencies import get_current_user
 import logging
+
+# CRITICAL: Use enhanced dependencies that REQUIRE authentication
+from app.auth.enhanced_dependencies import get_current_user_with_db
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/content", tags=["Video Streaming"])
@@ -15,12 +15,18 @@ router = APIRouter(prefix="/content", tags=["Video Streaming"])
 async def get_video_stream(
     content_slug: str,
     quality: Optional[str] = None,
-    user: Optional[UserResponse] = Depends(get_optional_user)
+    user_data: Dict[str, Any] = Depends(get_current_user_with_db)  # REQUIRED AUTH
 ):
-    """SECURED: Get video streaming URLs for authenticated users only"""
+    """
+    SECURED: Get video streaming URLs - AUTHENTICATION REQUIRED
+    This endpoint now properly validates user authentication and subscription
+    """
     
     connection = None
     try:
+        user = user_data["user"]  # Extract user from enhanced auth
+        db_user = user_data["db_user"]
+        
         # Log access attempt for security monitoring
         logger.info(f"Video access attempt by user {user.id} for content {content_slug}")
         
@@ -55,19 +61,18 @@ async def get_video_stream(
                 detail="Video not available for this content"
             )
         
-        # Convert asyncpg.Record to dict
         content_data = dict(content)
         
-        # SECURITY CHECK: Validate subscription access
+        # SECURITY CHECK: Validate subscription access using DATABASE values (not client cookies)
         if content_data['access_tier'] == 'premium':
-            if user.subscription_tier == 'free':
+            if db_user['subscription_tier'] == 'free':  # Use DB value, not client value
                 logger.warning(f"Free user {user.id} attempted to access premium content: {content_slug}")
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="Premium subscription required to access this content"
                 )
         
-        # Get streaming URLs using the service (user is guaranteed to be authenticated)
+        # Get streaming URLs using the service
         streaming_data = streaming_service.get_streaming_urls(content_data, user)
         
         # Add additional content metadata
@@ -81,8 +86,9 @@ async def get_video_stream(
             },
             "user_info": {
                 "user_id": user.id,
-                "subscription_tier": user.subscription_tier,
-                "access_granted": True
+                "subscription_tier": db_user['subscription_tier'],  # Always from DB
+                "access_granted": True,
+                "auth_system": "enhanced"
             }
         })
         
@@ -94,7 +100,7 @@ async def get_video_stream(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Video streaming request failed for {content_slug} by user {user.id}: {e}")
+        logger.error(f"Video streaming request failed for {content_slug} by user {user_data.get('user', {}).get('id', 'unknown')}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get video stream"
@@ -107,12 +113,16 @@ async def get_video_stream(
 async def log_video_event(
     content_slug: str,
     event_data: Dict[str, Any] = Body(...),
-    user: UserResponse = Depends(get_current_user)  # SECURED: Authentication required
+    user_data: Dict[str, Any] = Depends(get_current_user_with_db)  # REQUIRED AUTH
 ):
-    """SECURED: Log video analytics events for authenticated users only"""
+    """
+    SECURED: Log video analytics events - AUTHENTICATION REQUIRED
+    """
     
     connection = None
     try:
+        user = user_data["user"]
+        
         # Get content ID
         connection = await get_db_connection()
         
@@ -143,7 +153,7 @@ async def log_video_event(
                 detail=f"Invalid event type. Allowed: {', '.join(allowed_events)}"
             )
         
-        # Insert analytics event with user authentication
+        # Insert analytics event with authenticated user
         analytics_query = """
             INSERT INTO video_analytics (
                 content_id, user_id, session_id, event_type,
@@ -155,7 +165,7 @@ async def log_video_event(
         await connection.execute(
             analytics_query,
             content_id,
-            str(user.id),  # Always authenticated user
+            str(user.id),  # Always authenticated user from DB
             event_data['session_id'],
             event_data['event_type'],
             event_data.get('timestamp_seconds'),
@@ -171,7 +181,7 @@ async def log_video_event(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to log video event for {content_slug} by user {user.id}: {e}")
+        logger.error(f"Failed to log video event for {content_slug} by user {user_data.get('user', {}).get('id', 'unknown')}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to log video event"

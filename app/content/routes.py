@@ -1,19 +1,33 @@
-# app/content/routes.py - Secure content API routes
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from typing import Optional, List, Dict, Any
-from app.auth.dependencies import get_optional_user
+# app/content/routes.py - Fixed to use enhanced authentication
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Cookie
+from typing import Optional, Dict, Any
 from app.auth.models import UserResponse
 from app.services.content_service import content_service
 import logging
 
+# CRITICAL: Import from enhanced_dependencies ONLY
+from app.auth.enhanced_dependencies import get_current_user_with_db
+
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/content", tags=["Content"])
+
+async def get_optional_user_enhanced(
+    access_token: Optional[str] = Cookie(None)
+) -> Optional[Dict[str, Any]]:
+    """Optional user dependency using enhanced auth system"""
+    if not access_token:
+        return None
+    
+    try:
+        return await get_current_user_with_db(access_token)
+    except:
+        return None
 
 @router.get("/browse")
 async def get_browse_content(
     category: Optional[str] = Query(None, description="Filter by category slug"),
     limit: int = Query(20, ge=1, le=50, description="Number of items to return"),
-    user: Optional[UserResponse] = Depends(get_optional_user)
+    user_data: Optional[Dict[str, Any]] = Depends(get_optional_user_enhanced)
 ):
     """Get content for browse page with proper access control"""
     try:
@@ -23,6 +37,9 @@ async def get_browse_content(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid category format"
             )
+        
+        # Extract user from enhanced auth data
+        user = user_data["user"] if user_data else None
         
         result = await content_service.get_browse_content(
             user=user,
@@ -34,11 +51,9 @@ async def get_browse_content(
         response_data = {
             **result,
             'user_authenticated': user is not None,
-            'premium_available': len([c for c in result['content'] if c['access_tier'] == 'premium']) > 0
+            'premium_available': len([c for c in result['content'] if c['access_tier'] == 'premium']) > 0,
+            'auth_system': 'enhanced'
         }
-        
-        # Remove user access level from response for security
-        response_data.pop('user_access_level', None)
         
         return response_data
         
@@ -49,6 +64,45 @@ async def get_browse_content(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve content"
+        )
+
+@router.get("/detail/{content_slug}")
+async def get_content_detail(
+    content_slug: str,
+    user_data: Optional[Dict[str, Any]] = Depends(get_optional_user_enhanced)
+):
+    """Get detailed content with access control"""
+    try:
+        # Validate slug format for security
+        if not content_slug.replace('-', '').replace('_', '').isalnum():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid content slug format"
+            )
+        
+        # Extract user from enhanced auth data
+        user = user_data["user"] if user_data else None
+        
+        content_detail = await content_service.get_content_detail(
+            content_slug=content_slug,
+            user=user
+        )
+        
+        if not content_detail:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Content not found"
+            )
+        
+        return content_detail
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Content detail request failed for {content_slug}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve content detail"
         )
 
 @router.get("/categories")
@@ -89,47 +143,11 @@ async def get_featured_experts(
             detail="Failed to retrieve experts"
         )
 
-@router.get("/detail/{content_slug}")
-async def get_content_detail(
-    content_slug: str,
-    user: Optional[UserResponse] = Depends(get_optional_user)
-):
-    """Get detailed content with access control"""
-    try:
-        # Validate slug format for security
-        if not content_slug.replace('-', '').replace('_', '').isalnum():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid content slug format"
-            )
-        
-        content_detail = await content_service.get_content_detail(
-            content_slug=content_slug,
-            user=user
-        )
-        
-        if not content_detail:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Content not found"
-            )
-        
-        return content_detail
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Content detail request failed for {content_slug}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve content detail"
-        )
-
 @router.get("/search")
 async def search_content(
     q: str = Query(..., min_length=2, max_length=100, description="Search query"),
     category: Optional[str] = Query(None, description="Filter by category"),
-    user: Optional[UserResponse] = Depends(get_optional_user)
+    user_data: Optional[Dict[str, Any]] = Depends(get_optional_user_enhanced)
 ):
     """Search content securely"""
     try:
@@ -141,14 +159,17 @@ async def search_content(
                 detail="Search query cannot be empty"
             )
         
-        # Basic search implementation (can be enhanced later)
+        # Extract user from enhanced auth data
+        user = user_data["user"] if user_data else None
+        
+        # Basic search implementation
         result = await content_service.get_browse_content(
             user=user,
             category_slug=category,
             limit=20
         )
         
-        # Filter results by search query (simple text matching for now)
+        # Filter results by search query
         filtered_content = []
         for item in result['content']:
             if (search_query.lower() in item['title'].lower() or 

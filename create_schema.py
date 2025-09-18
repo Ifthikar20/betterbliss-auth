@@ -172,6 +172,49 @@ async def create_schema():
          'Discover evidence-based techniques from leading mental health professionals',
          'Start Your Journey', true, 1)
     ''')
+
+
+    # Add newsletter tables
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS newsletter_subscribers (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            email VARCHAR(255) UNIQUE NOT NULL,
+            name VARCHAR(100),
+            source VARCHAR(50) NOT NULL DEFAULT 'website',
+            status VARCHAR(20) NOT NULL DEFAULT 'pending',
+            metadata JSONB,
+            client_ip INET,
+            request_id VARCHAR(100),
+            confirmed_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    await conn.execute('''
+        CREATE TABLE IF NOT EXISTS rate_limits (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            identifier VARCHAR(255) NOT NULL,
+            endpoint VARCHAR(100) NOT NULL,
+            requests_count INTEGER DEFAULT 1,
+            window_start TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Add indexes
+    newsletter_indexes = [
+        "CREATE INDEX IF NOT EXISTS idx_newsletter_email ON newsletter_subscribers(email)",
+        "CREATE INDEX IF NOT EXISTS idx_newsletter_status ON newsletter_subscribers(status)",
+        "CREATE INDEX IF NOT EXISTS idx_newsletter_created ON newsletter_subscribers(created_at)",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limits_lookup ON rate_limits(identifier, endpoint, window_start)",
+        "CREATE INDEX IF NOT EXISTS idx_rate_limits_cleanup ON rate_limits(window_start)"
+    ]
+    
+    for index_sql in newsletter_indexes:
+        await conn.execute(index_sql)
+    
+    print("Newsletter tables added to schema")
     
     await conn.close()
     return True

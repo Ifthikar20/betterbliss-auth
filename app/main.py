@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from app.config import settings
 from app.middleware.cors import setup_cors
 from app.database.connection import DatabaseConnection
-
+from app.routes.newsletter import router as newsletter_router
 
 import logging
 
@@ -60,7 +60,6 @@ from app.routes.streaming import router as streaming_router
 app.include_router(streaming_router)
 
 # ADD THIS LINE - Newsletter router
-from app.routes.newsletter import router as newsletter_router
 app.include_router(newsletter_router)
 
 

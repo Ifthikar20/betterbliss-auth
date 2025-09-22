@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     cognito_client_secret: str
     cognito_domain: str
     
+    # Email Settings (ADD THESE)
+    from_email: str
+    support_email: str
+    ses_configuration_set: Optional[str] = None
+    
     # Database Settings
     database_url: Optional[str] = None
     db_host: Optional[str] = None

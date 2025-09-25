@@ -1,4 +1,4 @@
-# app/services/email_service.py - AWS SES Integration
+# app/services/email_service.py - AWS SES Integration with Debug Logging
 import boto3
 from botocore.exceptions import ClientError
 from typing import Optional, Dict, Any
@@ -7,14 +7,23 @@ import logging
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
+# Set up detailed logging
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 class EmailService:
     def __init__(self):
+        logger.info("=== INITIALIZING EMAIL SERVICE ===")
+        logger.info(f"AWS Region: {settings.aws_region}")
+        logger.info(f"From Email: {settings.from_email}")
+        logger.info(f"Support Email: {settings.support_email}")
+        
         self.ses_client = boto3.client('sesv2', region_name=settings.aws_region)
         self.from_email = settings.from_email
         self.support_email = settings.support_email
         self.executor = ThreadPoolExecutor(max_workers=5)
+        
+        logger.info("=== EMAIL SERVICE INITIALIZED SUCCESSFULLY ===")
         
     async def send_welcome_email(
         self, 
@@ -23,93 +32,61 @@ class EmailService:
         subscription_id: str = None
     ) -> bool:
         """Send welcome email to new newsletter subscriber"""
+        logger.info("=" * 60)
+        logger.info(f"🚀 STARTING WELCOME EMAIL PROCESS")
+        logger.info(f"📧 Target Email: {email}")
+        logger.info(f"👤 Name: {name}")
+        logger.info(f"🆔 Subscription ID: {subscription_id}")
+        logger.info("=" * 60)
+        
         try:
             # Generate unsubscribe link
             unsubscribe_url = f"{settings.frontend_url}/unsubscribe?id={subscription_id}"
+            logger.info(f"🔗 Unsubscribe URL: {unsubscribe_url}")
             
             # Create email content
-            subject = "Welcome to Better & Bliss - Your Wellness Journey Starts Here!"
+            subject = "Welcome to Better & Bliss - Your Mental Wellness Journey Starts Here"
+            logger.info(f"📝 Email Subject: {subject}")
             
+            logger.info("📄 Creating HTML content...")
             html_content = self._create_welcome_email_html(
                 name=name or "Friend",
                 unsubscribe_url=unsubscribe_url
             )
+            logger.info(f"✅ HTML content created (length: {len(html_content)} chars)")
             
+            logger.info("📄 Creating text content...")
             text_content = self._create_welcome_email_text(
                 name=name or "Friend",
                 unsubscribe_url=unsubscribe_url
             )
+            logger.info(f"✅ Text content created (length: {len(text_content)} chars)")
+            
+            logger.info("🚀 Attempting to send email via SES...")
             
             # Send email asynchronously
-            await self._send_email_async(
+            result = await self._send_email_async(
                 to_email=email,
                 subject=subject,
                 html_content=html_content,
                 text_content=text_content
             )
             
-            logger.info(f"Welcome email sent successfully to {email}")
+            logger.info(f"✅ SES RESPONSE: {result}")
+            logger.info(f"🎉 Welcome email sent successfully to {email}")
+            logger.info(f"📬 Message ID: {result.get('message_id', 'N/A')}")
+            logger.info("=" * 60)
             return True
             
         except Exception as e:
-            logger.error(f"Failed to send welcome email to {email}: {e}")
+            logger.error("=" * 60)
+            logger.error(f"❌ CRITICAL ERROR in send_welcome_email")
+            logger.error(f"📧 Email: {email}")
+            logger.error(f"🔥 Exception Type: {type(e).__name__}")
+            logger.error(f"💬 Exception Message: {str(e)}")
+            logger.error(f"📍 Full Exception: {repr(e)}")
+            logger.error("=" * 60)
             return False
-    
-    async def send_bulk_newsletter(
-        self,
-        subject: str,
-        html_content: str,
-        text_content: str,
-        subscriber_emails: list,
-        batch_size: int = 50
-    ) -> Dict[str, Any]:
-        """Send newsletter to multiple subscribers in batches"""
-        try:
-            total_sent = 0
-            failed_emails = []
-            
-            # Process in batches to avoid rate limits
-            for i in range(0, len(subscriber_emails), batch_size):
-                batch = subscriber_emails[i:i + batch_size]
-                
-                # Send batch
-                batch_results = await asyncio.gather(
-                    *[
-                        self._send_email_async(
-                            to_email=email,
-                            subject=subject,
-                            html_content=html_content,
-                            text_content=text_content
-                        )
-                        for email in batch
-                    ],
-                    return_exceptions=True
-                )
-                
-                # Count results
-                for idx, result in enumerate(batch_results):
-                    if isinstance(result, Exception):
-                        failed_emails.append(batch[idx])
-                        logger.error(f"Failed to send to {batch[idx]}: {result}")
-                    else:
-                        total_sent += 1
-                
-                # Small delay between batches
-                if i + batch_size < len(subscriber_emails):
-                    await asyncio.sleep(0.1)
-            
-            logger.info(f"Bulk newsletter sent: {total_sent} successful, {len(failed_emails)} failed")
-            
-            return {
-                'total_sent': total_sent,
-                'total_failed': len(failed_emails),
-                'failed_emails': failed_emails,
-                'success_rate': (total_sent / len(subscriber_emails)) * 100 if subscriber_emails else 0
-            }
-            
-        except Exception as e:
-            logger.error(f"Bulk newsletter sending failed: {e}")
-            raise
     
     async def _send_email_async(
         self,
@@ -120,10 +97,18 @@ class EmailService:
         reply_to: Optional[str] = None
     ) -> Dict[str, Any]:
         """Send email using AWS SES (async wrapper)"""
+        logger.info("🔄 Preparing async email send...")
+        logger.info(f"📧 TO: {to_email}")
+        logger.info(f"📝 SUBJECT: {subject}")
+        logger.info(f"📤 FROM: {self.from_email}")
+        logger.info(f"↩️ REPLY-TO: {reply_to or self.support_email}")
+        
         loop = asyncio.get_event_loop()
         
+        logger.info("⚡ Executing SES call in thread pool...")
+        
         # Run SES call in thread pool to avoid blocking
-        return await loop.run_in_executor(
+        result = await loop.run_in_executor(
             self.executor,
             self._send_email_ses,
             to_email,
@@ -132,6 +117,9 @@ class EmailService:
             text_content,
             reply_to
         )
+        
+        logger.info(f"🔙 Thread pool execution completed: {result}")
+        return result
     
     def _send_email_ses(
         self,
@@ -142,7 +130,14 @@ class EmailService:
         reply_to: Optional[str] = None
     ) -> Dict[str, Any]:
         """Send email using AWS SES"""
+        logger.info("🌐 ENTERING SES EMAIL SEND FUNCTION")
+        logger.info(f"📧 TO EMAIL: {to_email}")
+        logger.info(f"📤 FROM EMAIL: {self.from_email}")
+        logger.info(f"🌍 AWS REGION: {settings.aws_region}")
+        
         try:
+            logger.info("🔧 Building email parameters...")
+            
             email_params = {
                 'FromEmailAddress': f"Better & Bliss <{self.from_email}>",
                 'Destination': {
@@ -166,36 +161,40 @@ class EmailService:
                         }
                     }
                 },
-                'ReplyToAddresses': [reply_to or self.support_email],
-                'EmailTags': [
-                    {
-                        'Name': 'EmailType',
-                        'Value': 'Newsletter'
-                    },
-                    {
-                        'Name': 'Platform',
-                        'Value': 'BetterBliss'
-                    }
-                ]
+                'ReplyToAddresses': [reply_to or self.support_email]
             }
             
-            # Add configuration set if specified
-            if hasattr(settings, 'ses_configuration_set') and settings.ses_configuration_set:
-                email_params['ConfigurationSetName'] = settings.ses_configuration_set
+            logger.info("✅ Email parameters built successfully")
+            logger.info(f"📋 Params structure: {list(email_params.keys())}")
+            logger.info(f"📧 Destination: {email_params['Destination']}")
+            logger.info(f"📤 From: {email_params['FromEmailAddress']}")
+            
+            logger.info("🚀 CALLING AWS SES send_email...")
             
             response = self.ses_client.send_email(**email_params)
             
-            return {
+            logger.info("🎊 SES CALL SUCCESSFUL!")
+            logger.info(f"📨 Full SES Response: {response}")
+            logger.info(f"🆔 Message ID: {response.get('MessageId', 'No Message ID')}")
+            
+            result = {
                 'success': True,
                 'message_id': response.get('MessageId'),
                 'to_email': to_email
             }
             
+            logger.info(f"✅ Returning success result: {result}")
+            return result
+            
         except ClientError as e:
             error_code = e.response['Error']['Code']
             error_message = e.response['Error']['Message']
             
-            logger.error(f"SES error sending to {to_email}: {error_code} - {error_message}")
+            logger.error("🚨 AWS SES CLIENT ERROR!")
+            logger.error(f"💥 Error Code: {error_code}")
+            logger.error(f"💬 Error Message: {error_message}")
+            logger.error(f"📋 Full Error Response: {e.response}")
+            logger.error(f"📧 Failed Email: {to_email}")
             
             if error_code == 'MessageRejected':
                 raise ValueError(f"Email rejected: {error_message}")
@@ -207,13 +206,21 @@ class EmailService:
                 raise ValueError("Account sending paused - likely due to bounce/complaint rate")
             else:
                 raise ValueError(f"Email delivery failed: {error_message}")
+                
         except Exception as e:
-            logger.error(f"Unexpected error sending email to {to_email}: {e}")
+            logger.error("💀 UNEXPECTED ERROR IN SES SEND!")
+            logger.error(f"🔥 Exception Type: {type(e).__name__}")
+            logger.error(f"💬 Exception Message: {str(e)}")
+            logger.error(f"📍 Full Exception: {repr(e)}")
+            logger.error(f"📧 Failed Email: {to_email}")
             raise ValueError(f"Email sending failed: {e}")
-
+    
     def _create_welcome_email_html(self, name: str, unsubscribe_url: str) -> str:
         """Create HTML content for welcome email"""
-        return f"""
+        logger.info(f"🎨 Creating HTML email for: {name}")
+        logger.info(f"🔗 With unsubscribe URL: {unsubscribe_url}")
+        
+        html = f"""
         <!DOCTYPE html>
         <html lang="en">
         <head>
@@ -264,53 +271,6 @@ class EmailService:
                     font-size: 16px;
                     margin: 10px 0 0 0;
                 }}
-                .content {{
-                    margin: 30px 0;
-                }}
-                .highlight-box {{
-                    background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
-                    padding: 20px;
-                    border-radius: 8px;
-                    border-left: 4px solid #7c3aed;
-                    margin: 20px 0;
-                }}
-                .benefits {{
-                    list-style: none;
-                    padding: 0;
-                }}
-                .benefits li {{
-                    padding: 8px 0;
-                    border-bottom: 1px solid #f1f5f9;
-                }}
-                .benefits li:before {{
-                    content: "✓";
-                    color: #10b981;
-                    font-weight: bold;
-                    margin-right: 10px;
-                }}
-                .cta-button {{
-                    display: inline-block;
-                    background: linear-gradient(135deg, #7c3aed, #6366f1);
-                    color: white;
-                    padding: 12px 24px;
-                    border-radius: 8px;
-                    text-decoration: none;
-                    font-weight: bold;
-                    margin: 20px 0;
-                }}
-                .footer {{
-                    text-align: center;
-                    margin-top: 40px;
-                    padding-top: 20px;
-                    border-top: 1px solid #e5e7eb;
-                    color: #6b7280;
-                    font-size: 12px;
-                }}
-                .unsubscribe {{
-                    color: #9ca3af;
-                    text-decoration: none;
-                    font-size: 11px;
-                }}
             </style>
         </head>
         <body>
@@ -321,78 +281,47 @@ class EmailService:
                     <p class="subtitle">Your mental wellness journey starts here</p>
                 </div>
                 
-                <div class="content">
-                    <p>Hi {name},</p>
-                    
-                    <p>Thank you for joining our wellness community! We're thrilled to have you on this journey toward better mental health and personal growth.</p>
-                    
-                    <div class="highlight-box">
-                        <h3>What you can expect:</h3>
-                        <ul class="benefits">
-                            <li>Weekly wellness tips from licensed mental health professionals</li>
-                            <li>Practical exercises for stress management and mindfulness</li>
-                            <li>Expert insights on anxiety, depression, and emotional wellness</li>
-                            <li>Early access to new content and features</li>
-                            <li>Supportive community resources</li>
-                        </ul>
-                    </div>
-                    
-                    <p>Our mission is to make mental health resources accessible, practical, and stigma-free. Every email we send is designed to provide you with actionable insights that can make a real difference in your daily life.</p>
-                    
-                    <div style="text-align: center;">
-                        <a href="{settings.frontend_url}/browse" class="cta-button">
-                            Explore Our Content
-                        </a>
-                    </div>
-                    
-                    <p>If you have any questions or need support, don't hesitate to reach out to us at <a href="mailto:{self.support_email}">{self.support_email}</a>.</p>
-                    
-                    <p>Here's to your wellness journey!</p>
-                    
-                    <p><strong>The Better & Bliss Team</strong></p>
-                </div>
+                <p>Hi {name},</p>
                 
-                <div class="footer">
-                    <p>Better & Bliss Mental Health & Wellness Platform</p>
-                    <p>You're receiving this because you subscribed to our newsletter.</p>
-                    <p><a href="{unsubscribe_url}" class="unsubscribe">Unsubscribe</a></p>
+                <p>Thank you for joining our mental wellness community! This is a test welcome email.</p>
+                
+                <p>Best regards,<br>The Better & Bliss Team</p>
+                
+                <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #e5e7eb; color: #6b7280; font-size: 12px;">
+                    <p>Better & Bliss - Mental Health & Wellness Platform</p>
+                    <p><a href="{unsubscribe_url}" style="color: #9ca3af; text-decoration: none; font-size: 11px;">Unsubscribe</a></p>
                 </div>
             </div>
         </body>
         </html>
         """
+        
+        logger.info(f"✅ HTML email created (length: {len(html)} characters)")
+        return html
     
     def _create_welcome_email_text(self, name: str, unsubscribe_url: str) -> str:
         """Create plain text content for welcome email"""
-        return f"""
+        logger.info(f"📝 Creating text email for: {name}")
+        
+        text = f"""
 Welcome to Better & Bliss!
 
 Hi {name},
 
-Thank you for joining our wellness community! We're thrilled to have you on this journey toward better mental health and personal growth.
+Thank you for joining our mental wellness community! This is a test welcome email.
 
-What you can expect:
-• Weekly wellness tips from licensed mental health professionals
-• Practical exercises for stress management and mindfulness  
-• Expert insights on anxiety, depression, and emotional wellness
-• Early access to new content and features
-• Supportive community resources
-
-Our mission is to make mental health resources accessible, practical, and stigma-free. Every email we send is designed to provide you with actionable insights that can make a real difference in your daily life.
-
-Explore our content: {settings.frontend_url}/browse
-
-If you have any questions or need support, don't hesitate to reach out to us at {self.support_email}.
-
-Here's to your wellness journey!
-
+Best regards,
 The Better & Bliss Team
 
 ---
-Better & Bliss Mental Health & Wellness Platform
-You're receiving this because you subscribed to our newsletter.
+Better & Bliss - Mental Health & Wellness Platform
 Unsubscribe: {unsubscribe_url}
         """
+        
+        logger.info(f"✅ Text email created (length: {len(text)} characters)")
+        return text
 
 # Global email service instance
+logger.info("🌟 Creating global email service instance...")
 email_service = EmailService()
+logger.info("🌟 Global email service instance created!")

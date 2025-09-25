@@ -41,7 +41,9 @@
         {"name": "DB_NAME", "value": "betterbliss"},
         {"name": "DB_USERNAME", "value": "betterbliss_user"},
         {"name": "DB_PASSWORD", "value": "SecureBB1756657116!"},
-        {"name": "DB_SSL_MODE", "value": "require"}
+        {"name": "DB_SSL_MODE", "value": "require"},
+        {"name": "FROM_EMAIL", "value": "newsletter@betterandbliss.com"},
+        {"name": "SUPPORT_EMAIL", "value": "ifthikarali20@gmail.com"}
       ],
       "healthCheck": {
         "command": ["CMD-SHELL", "curl -f http://localhost:8000/health || exit 1"],
